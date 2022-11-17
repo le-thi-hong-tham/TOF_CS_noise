@@ -5,46 +5,48 @@ close all;
 f=1000; %kHz = 1Mhz frequency of light wave
 f1=1000;
 f2=1250;
+d = 540 %m
 T=1/f; %duty cycle of light wave
 fs=50; % rate of camera sensor
 Ts=1/fs; %duty cycle of camera sensor
 k= 1; %sparse level per cycles
 Nc1 = 100 % number sample per cycles
 Nc2 = 80;
-M = Nc1 * (f1+f2)/500; % number tranfers - measuments
+M = 200; % number tranfers - measuments
 N = Nc1 * f1/fs; % length of signal
+
+%van toc anh sang
+c=3e8;
+
+% Distance measument
+d_max= c/(2*abs(f1-f2)*10^3);
 
 %generate signal reference
 refsig1 = zeros(N,1);
 ref1= zeros(Nc1,1); % signal tranfers per cycle
 ref1(1,1)= 1;
-
+l=1;
 refsig2 = zeros(N,1);
 ref2= zeros(Nc2,1); % signal tranfers per cycle
-ref2(50,1)= 2;
+ref2(l,1)= 2;
 % time of the light wave flighting from the object to the imaging sensor
 % shiftime = round(N/M);% plot(refsig);
-shiftime = 18;
-
-objsig1 = zeros(N,1);
-obj1= zeros(Nc1,1); % signal tranfers per cycle
-obj1(1+shiftime: 1+shiftime)= 1;
-
-objsig2 = zeros(N,1);
-obj2= zeros(Nc2,1); % signal tranfers per cycle
-obj2(50+shiftime: 50+shiftime)= 2;
+shiftime = 360;
 
 for i= 1:f1/fs
     refsig1((i-1)*Nc1+1:i*Nc1) = ref1(:,1);
-    objsig1((i-1)*Nc1+1:i*Nc1) = obj1(:,1);
 end
 for i= 1:f2/fs
     refsig2((i-1)*Nc2+1:i*Nc2) = ref2(:,1);
-    objsig2((i-1)*Nc2+1:i*Nc2) = obj2(:,1);
 end
 
 refsig = refsig1+refsig2;
-objsig = objsig1+objsig2;
+objsig = circshift(refsig,shiftime);
+
+% for i= 1:N
+%     t(i) = (i-1)/(f2*Nc2);
+%    
+% end
 
 
 figure(1);
@@ -54,11 +56,11 @@ plot(objsig);
 ylim([-0.2 4]);
 xlabel('ms');
 ylabel('Amplitude');
-title('Reconstructed signal');
+% title('Reconstructed signal');
 legend('ref','obj')
-
-
-% generate encode signal
+% 
+% 
+% % generate encode signal
 Phi = randi([0 1],N,N);
 y=Phi*refsig;
 y1=Phi*objsig;
@@ -66,26 +68,30 @@ y1=Phi*objsig;
 % plot(y)
 % hold on
 % plot(y1);
-
+d= 401;
 for i=1:M
-   position(i,1) = (i-1) *shiftime+1;
+   position(i,1) = d + 1;
    while(position(i) > N)
        position(i) = position(i)-N;
    end
+   d = d +2;
 end
+% for i=shiftime:M+shiftime
+%     position(i,1) = 2*i;
+% end
 
 %%Adding some measurement noise.
-SNR=40;
-n=awgn(y1,SNR,'measured');
+% SNR=38;
+% n=awgn(y1,SNR,'measured');
 outputref = zeros(M,1);
 outputobj = zeros(M,1);
 
 %Making random measurements
 A=zeros(M,N);
-for i=1 : M
+for i= 1:M
     outputref(i) = y(position(i));
     A(i,:) = Phi(position(i),:);
-    outputobj(i) = n(position(i));
+    outputobj(i) = y1(position(i));
 end
 
 figure(3)
@@ -94,7 +100,7 @@ hold on
 plot(outputobj);
 xlabel('sample');
 ylabel('Intensity');
-title(sprintf('Measurement vector with noise at SNR=%d dB', SNR));
+title('Measurement vector');
 legend('ref','obj')
 % 
 % %Adding some measurement noise.
@@ -129,10 +135,10 @@ cvx_begin
 %     minimize (norm(A*obj-outputobj,2)+0.01*norm(obj,1));
 cvx_end
 % 
-%Compute error recovered
-% diff_ref = refsig - xp_ref;
-% recovery_error_ref = norm(diff_ref) / norm(refsig);
-% fprintf('recovery error: %0.4f\n', recovery_error_ref);
+% Compute error recovered
+diff_ref = refsig - xp_ref;
+recovery_error_ref = norm(diff_ref) / norm(refsig);
+fprintf('recovery error: %0.4f\n', recovery_error_ref);
 % 
 diff = objsig - xp_obj;
 recovery_error = norm(diff) / norm(objsig);
@@ -148,45 +154,38 @@ ylabel('Amplitude');
 title('Reconstructed signal');
 legend('ref','obj');
 
-t1 = zeros(2,1);
-dem=0;
-for j = 1: length(xp_ref)
-        if(round(xp_ref(j),1) == 2)
-            t1(2) = (j-1)/(f1*Nc1);
-            dem=dem+1;
-        end
-        if(round(xp_ref(j),1) == 1)
-            t1(1) = (j-1)/(f2*Nc2);
-            dem=dem+1;
-        end
-        if(dem ==2)
-            break;
-        end
-        
-        
-        
+
+%% Calculate phase difference (in time domain)
+MaxObjLoc = 0;
+MaxRefLoc = 0;
+Cycle = 400;
+RcvObjCyc = zeros(1,Cycle);
+RcvRefCyc = zeros(1,Cycle);
+
+% 
+for i = 1:Cycle
+    RcvObjCyc(i) = xp_obj(i);
+    RcvRefCyc(i) = xp_ref(i);
+end
+% 
+for i = 1:length(RcvObjCyc)
+    if(RcvObjCyc(i) == max(RcvObjCyc))
+        MaxObjLoc = i;
+        break;
+    end
 end
 
-t2 = zeros(2,1);
-dem2=0;
-for j = 1: length(xp_obj)
-        if(round(xp_obj(j),1) == 2)
-            t2(2) = (j-1)/(f1*10^3*Nc1);
-            dem2=dem2+1;
-        end
-        if(round(xp_obj(j),1) == 1)
-            t2(1) = (j-1)/(f2*10^3*Nc2);
-            dem2=dem2+1;
-        end
-        if(dem2 ==2)
-            break;
-        end        
+for i = 1:length(RcvRefCyc)
+    if(RcvRefCyc(i) == max(RcvRefCyc))
+        MaxRefLoc = i;
+        break;
+    end
 end
+% 
+LocDif = abs(MaxRefLoc - MaxObjLoc);
+PDS = ((2*pi*LocDif)/Cycle);
 
-time_delay = t2(1)-t1(1);
-
-
-LightSpeed = 3*10^8;
-Distance = LightSpeed*time_delay;
+%% Distance calculation
+Distance = (c/(2*abs(f1-f2)*10^3))*(PDS/(2*pi));
 fprintf('Measured Distance = %.2fm\n',Distance)
 
